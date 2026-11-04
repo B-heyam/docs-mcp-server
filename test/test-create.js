@@ -1,5 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+
+import JSZip from "jszip";
+
 import {
   check,
   closeClient,
@@ -11,6 +14,29 @@ import {
   startClient,
   textOf,
 } from "./helpers.js";
+
+async function inspectDocx(filePath) {
+  const zip = await JSZip.loadAsync(await fs.readFile(filePath));
+  const parts = {};
+
+  for (const name of Object.keys(zip.files)) {
+    if (/^word\/.*\.xml$/i.test(name)) {
+      parts[name] = await zip.file(name).async("string");
+    }
+  }
+
+  const footers = Object.entries(parts)
+    .filter(([name]) => /^word\/footer\d*\.xml$/i.test(name))
+    .map(([, xml]) => xml)
+    .join("\n");
+
+  return {
+    document: parts["word/document.xml"] ?? "",
+    styles: parts["word/styles.xml"] ?? "",
+    footers,
+    all: Object.values(parts).join("\n"),
+  };
+}
 
 async function createAndRead(client, spec, expectedStrings, label) {
   const created = await client.callTool({
@@ -186,6 +212,35 @@ try {
       "42",
     ],
     "English"
+  );
+
+  // Formatting guarantees: black text, one page-number field per footer, and no
+  // page border (borders were deliberately left out).
+  const englishPath = path.join(tempDir, "english_test.docx");
+  const englishXml = await inspectDocx(englishPath);
+
+  const nonBlackColors = englishXml.all.match(
+    /<w:color w:val="(?!000000)[0-9A-Fa-f]{6}"/g
+  );
+  check(
+    "English: every text color is black",
+    nonBlackColors === null,
+    `found: ${nonBlackColors?.join(", ")}`
+  );
+  check(
+    "English: footer contains a PAGE field",
+    /<w:instrText[^>]*>\s*PAGE\s*<\/w:instrText>/.test(englishXml.footers),
+    englishXml.footers
+  );
+  check(
+    "English: footer has exactly one page-number field",
+    (englishXml.footers.match(/PAGE/g) ?? []).length === 1,
+    englishXml.footers
+  );
+  check(
+    "English: no page border",
+    !englishXml.document.includes("pgBorders"),
+    "document.xml contains pgBorders"
   );
 
   // One persistent Arabic sample in the real DOCS_DIR (never deleted).

@@ -3,9 +3,11 @@ import path from "node:path";
 import {
   AlignmentType,
   Document,
+  Footer,
   HeadingLevel,
   LevelFormat,
   Packer,
+  PageNumber,
   Paragraph,
   Table,
   TableCell,
@@ -47,6 +49,30 @@ const CREATE_DOCX_DEFAULT_FONTS = {
 // docx sizes are half-points: 24 = 12pt.
 const CREATE_DOCX_BODY_SIZE = 24;
 
+// Footer text is slightly smaller than the body.
+const CREATE_DOCX_FOOTER_SIZE = 20;
+
+// Every piece of text is pure black; the library defaults to blue headings.
+const CREATE_DOCX_TEXT_COLOR = "000000";
+
+// Built-in heading sizes (half-points) that the docx defaults would otherwise
+// supply together with their blue color.
+const CREATE_DOCX_HEADING_SIZES = { 1: 32, 2: 26, 3: 24 };
+
+const headingStyles = {
+  ...Object.fromEntries(
+    Object.entries(CREATE_DOCX_HEADING_SIZES).map(([level, size]) => [
+      `heading${level}`,
+      { run: { color: CREATE_DOCX_TEXT_COLOR, size, sizeComplexScript: size } },
+    ])
+  ),
+  // Levels 4-6 are not reachable through the tool's schema, but they ship in the
+  // default stylesheet with blue text, so they are neutralized too.
+  heading4: { run: { color: CREATE_DOCX_TEXT_COLOR, italics: true } },
+  heading5: { run: { color: CREATE_DOCX_TEXT_COLOR } },
+  heading6: { run: { color: CREATE_DOCX_TEXT_COLOR } },
+};
+
 const createDocxBlockSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("heading"),
@@ -76,7 +102,7 @@ export function registerCreateDocxTools(server) {
     {
       title: "Create DOCX",
       description:
-        "Create a new .docx from headings, paragraphs, bullet lists and tables. Supports Arabic/RTL layout with right alignment, bidirectional paragraphs, RTL runs and RTL tables.",
+        "Create a new .docx from headings, paragraphs, bullet lists and tables. Text is always black and every page gets a centered page number in the footer. Supports Arabic/RTL layout with right alignment, bidirectional paragraphs, RTL runs and RTL tables.",
       inputSchema: {
         output: z.string().min(1).describe("New .docx path relative to DOCS_DIR"),
         title: z.string().optional().describe("Optional document title (rendered as Heading 1)"),
@@ -210,6 +236,23 @@ export function registerCreateDocxTools(server) {
           );
         }
 
+        const footer = new Footer({
+          children: [
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [
+                new TextRun({
+                  children: [PageNumber.CURRENT],
+                  font,
+                  color: CREATE_DOCX_TEXT_COLOR,
+                  size: CREATE_DOCX_FOOTER_SIZE,
+                  sizeComplexScript: CREATE_DOCX_FOOTER_SIZE,
+                }),
+              ],
+            }),
+          ],
+        });
+
         const document = new Document({
           title: title ?? "Document",
           creator: "wps-docs-mcp",
@@ -248,14 +291,18 @@ export function registerCreateDocxTools(server) {
                   font,
                   rightToLeft: isRtl,
                   language: languageOptions,
+                  color: CREATE_DOCX_TEXT_COLOR,
                   size: CREATE_DOCX_BODY_SIZE,
                   sizeComplexScript: CREATE_DOCX_BODY_SIZE,
                 },
                 paragraph: { alignment: defaultAlignment },
               },
+              ...headingStyles,
+              hyperlink: { run: { color: CREATE_DOCX_TEXT_COLOR } },
+              caption: { run: { color: CREATE_DOCX_TEXT_COLOR } },
             },
           },
-          sections: [{ children }],
+          sections: [{ children, footers: { default: footer } }],
         });
 
         const buffer = await Packer.toBuffer(document);

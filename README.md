@@ -19,7 +19,7 @@ It is plain JavaScript (ES modules, no build step) and runs over stdio.
 | `read_docx` | Extracts the raw text from a `.docx`, preserving Arabic and other UTF-8 text. |
 | `read_pdf` | Extracts text page by page from a `.pdf`, optionally limited to a page range. |
 | `replace_text_docx` | Replaces text in a `.docx` (body, headers, footers) and saves a new copy, keeping formatting. |
-| `create_docx` | Creates a new `.docx` from headings, paragraphs, bullet lists and tables, with optional RTL/Arabic layout. |
+| `create_docx` | Creates a new `.docx` from headings, paragraphs, bullet lists and tables, with black text and a centered page number in the footer; optional RTL/Arabic layout. |
 | `pdf_extract_pages` | Creates a new PDF containing only the selected pages, in the order given. |
 | `merge_pdfs` | Merges two or more PDFs into a new PDF, in the given order. |
 | `pdf_add_text` | Draws text onto existing PDF pages, including shaped Arabic and accented French. |
@@ -103,6 +103,8 @@ print `persistent sample already exists, skipped`.
 
 - PDF text cannot be edited directly. The PDF tools only extract, merge, or draw
   new text on top of pages; existing page content is left as-is.
+- `create_docx` always writes black text and a centered page number in the footer.
+  It has no option for other colors or for a page border.
 - `replace_text_docx` uses case-sensitive substring matching. `AI` does not match
   `ai`, and the match can span multiple Word runs but not paragraphs.
 - Arabic in `pdf_add_text` is shaped with `arabic-reshaper` and reordered with
